@@ -58,8 +58,6 @@ uvicorn main:app --reload
 streamlit run app.py
 ```
 
-## 📸 Demo
-[Add your YouTube video link here]
 
 ## 👨‍💻 Made by Karam
 Built for Kaggle Hackathon 2025
