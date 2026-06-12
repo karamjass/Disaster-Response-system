@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+streamlit
+requests
+pydantic
+networkx
+python-multipart
+httpx
+folium
+streamlit-folium
+groq
+python-dotenv
