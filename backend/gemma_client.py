@@ -4,7 +4,7 @@ import base64
 class GemmaClient:
     def __init__(self, api_key: str):
         self.client = AsyncGroq(api_key=api_key)
-        self.model = "gemma2-9b-it"
+        self.model = "llama-3.3-70b-versatile"
 
     async def generate(self, prompt, model=None, images=None):
         try:
