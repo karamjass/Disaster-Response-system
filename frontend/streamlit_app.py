@@ -1096,14 +1096,53 @@ if st.session_state.analyzed and st.session_state.get('persisted_desc', '').stri
         with col_right:
             st.write("### 🗺️ Incident Deployment Map")
             try:
+                map_data = res.get("map_data", {})
+                affected_lat = map_data.get("affected_lat")
+                affected_lon = map_data.get("affected_lon")
+                safe_lat = map_data.get("safe_lat")
+                safe_lon = map_data.get("safe_lon")
+
+                # Determine which coordinates are available
+                has_affected = affected_lat is not None and affected_lon is not None
+                has_safe = safe_lat is not None and safe_lon is not None
+
+                if has_affected:
+                    center_lat, center_lon = affected_lat, affected_lon
+                elif has_safe:
+                    center_lat, center_lon = safe_lat, safe_lon
+                else:
+                    center_lat, center_lon = st.session_state.get('user_coords', [28.6600, 77.2300])
+
                 mc = 'red' if severity == 'CRITICAL' else 'orange' if severity == 'SERIOUS' else 'green'
-                curr_lat, curr_lng = st.session_state.get('user_coords', [28.6600, 77.2300])
-                m = folium.Map(location=[curr_lat, curr_lng], zoom_start=15, tiles="openstreetmap")
-                folium.Marker([curr_lat, curr_lng], popup=f"Incident: {severity}",
-                              icon=folium.Icon(color=mc, icon='info-sign')).add_to(m)
+                m = folium.Map(location=[center_lat, center_lon], zoom_start=13, tiles="openstreetmap")
+
+                # Affected area marker
+                if has_affected:
+                    folium.Marker(
+                        [affected_lat, affected_lon],
+                        popup=f"⚠️ Affected Area ({severity})",
+                        icon=folium.Icon(color=mc, icon='warning-sign')
+                    ).add_to(m)
+
+                # Safe zone marker
+                if has_safe:
+                    folium.Marker(
+                        [safe_lat, safe_lon],
+                        popup="✅ Safe Zone",
+                        icon=folium.Icon(color='green', icon='ok-sign')
+                    ).add_to(m)
+
+                # Auto-fit bounds when both markers exist
+                if has_affected and has_safe:
+                    bounds = [[affected_lat, affected_lon], [safe_lat, safe_lon]]
+                    m.fit_bounds(bounds, padding=[40, 40])
+
                 st_folium(m, width=500, height=380, key="result_map")
-            except:
-                st.map({"lat": [curr_lat], "lon": [curr_lng]})
+            except Exception:
+                # Fallback to simple st.map with whatever coordinates are available
+                fallback_lat = map_data.get("affected_lat") or map_data.get("safe_lat") or 28.6600
+                fallback_lon = map_data.get("affected_lon") or map_data.get("safe_lon") or 77.2300
+                st.map({"lat": [fallback_lat], "lon": [fallback_lon]})
 
             st.write(res.get("logistics", {}).get("message", ""))
 
