@@ -1,11 +1,9 @@
 import streamlit as st
 import requests
-import folium
-from streamlit_folium import st_folium
 import random
 import math
 
-API_URL = "https://disaster-response-system-ppci.onrender.com/analyze"
+API_URL = "https://disaster-response-system-ppci.onrender.com"
 
 # Page config
 st.set_page_config(
@@ -1022,9 +1020,9 @@ if st.session_state.analyzed and st.session_state.get('persisted_desc', '').stri
             if uploaded_image:
                 files["image"] = (uploaded_image.name, uploaded_image.getvalue(), uploaded_image.type)
             try:
-                # Prefix the severity so Gemma 4 knows the triage level
+                # Prefix the severity so the AI knows the triage level
                 full_context = f"SEVERITY LEVEL: {st.session_state.get('incident_severity', 'Normal')}\n\nDESCRIPTION: {st.session_state.persisted_desc}"
-                r = requests.post(API_URL, data={"symptoms": full_context}, files=files, timeout=150)
+                r = requests.post(f"https://disaster-response-system-ppci.onrender.com/disaster-ai", json={"query": full_context}, timeout=150)
                 if r.status_code == 200:
                     st.session_state.last_result = r.json()
                     if not st.session_state.last_result:
@@ -1046,108 +1044,41 @@ if st.session_state.analyzed and st.session_state.get('persisted_desc', '').stri
         res = st.session_state.last_result
 
         # Severity parsing
-        # Severity parsing (Defensive)
-        report_text = res.get("report", "").strip()
-        severity = "MINOR"
-        badge_class = "badge-minor"
-        
-        if report_text:
-            words = report_text.split()
-            if words:
-                first_word = words[0].upper().replace('[','').replace(']','').replace(':','')
-                if "CRITICAL" in first_word or "CRITICAL" in report_text[:50].upper(): 
-                    severity = "CRITICAL"
-                elif "SERIOUS" in first_word or "SERIOUS" in report_text[:50].upper(): 
-                    severity = "SERIOUS"
-                badge_class = f"badge-{severity.lower()}"
+        severity = res.get("severity", "Minor").upper()
+        badge_class = f"badge-{severity.lower()}"
+
+        # Build report from structured API response
+        actions = "\n".join([f"- {a}" for a in res.get("immediate_actions", [])])
+        contacts = "\n".join([f"- {k}: {v}" for k, v in res.get("resources_contacts", {}).items()])
+        evac = "\n".join([f"- {s}" for s in res.get("evacuation_steps", [])])
+        tips = "\n".join([f"- {t}" for t in res.get("survival_tips", [])])
+        report_text = f"**Disaster Type:** {res.get('disaster_type', '').title()}\n**Severity:** {res.get('severity', '')}\n\n**Immediate Actions:**\n{actions}\n\n**Emergency Contacts:**\n{contacts}\n\n**Evacuation Steps:**\n{evac}\n\n**Survival Tips:**\n{tips}\n\n**Summary:** {res.get('summary', '')}"
 
         st.markdown('<div class="analysis-header">✅ INCIDENT ANALYSIS COMPLETE</div>', unsafe_allow_html=True)
 
-        col_left, col_right = st.columns([3, 2])
+        st.markdown(f'<div class="badge {badge_class}">{severity} SEVERITY</div>', unsafe_allow_html=True)
 
-        with col_left:
-            st.markdown(f'<div class="badge {badge_class}">{severity} SEVERITY</div>', unsafe_allow_html=True)
-
-            if st.button("🔊 Read Report Aloud"):
-                # Comprehensive cleanup for TTS
-                raw_report = res.get("report", "")
-                clean = raw_report.replace('"', "'").replace('\n', ' ')
-                # Remove hashtags, asterisks, and underscores that TTS often reads aloud
-                for char in ['#', '*', '_', '>', '`', '[', ']']:
-                    clean = clean.replace(char, '')
-                
-                st.components.v1.html(
-                    f'<script>window.speechSynthesis.speak(new SpeechSynthesisUtterance("{clean.strip()}"));</script>',
-                    height=0
-                )
-
-            st.write("### 📋 Executive Summary")
-            report_text = res.get("report", "No report available.")
-            # Strip internal 'Thinking...' or '<think>' tags if present to keep it clean
-            if "Thinking..." in report_text:
-                report_text = report_text.split("Thinking...", 1)[-1].strip()
-            if "<think>" in report_text and "</think>" in report_text:
-                report_text = report_text.split("</think>", 1)[-1].strip()
+        if st.button("🔊 Read Report Aloud"):
+            # Comprehensive cleanup for TTS
+            clean = report_text.replace('"', "'").replace('\n', ' ')
+            for char in ['#', '*', '_', '>', '`', '[', ']']:
+                clean = clean.replace(char, '')
             
-            st.write(report_text)
+            st.components.v1.html(
+                f'<script>window.speechSynthesis.speak(new SpeechSynthesisUtterance("{clean.strip()}"));</script>',
+                height=0
+            )
 
-            pass # Sections removed as requested
+        st.write("### 📋 Executive Summary")
+        st.write(report_text)
 
-        with col_right:
-            st.write("### 🗺️ Incident Deployment Map")
-            try:
-                map_data = res.get("map_data", {})
-                affected_lat = map_data.get("affected_lat")
-                affected_lon = map_data.get("affected_lon")
-                safe_lat = map_data.get("safe_lat")
-                safe_lon = map_data.get("safe_lon")
-
-                # Determine which coordinates are available
-                has_affected = affected_lat is not None and affected_lon is not None
-                has_safe = safe_lat is not None and safe_lon is not None
-
-                if has_affected:
-                    center_lat, center_lon = affected_lat, affected_lon
-                elif has_safe:
-                    center_lat, center_lon = safe_lat, safe_lon
-                else:
-                    center_lat, center_lon = st.session_state.get('user_coords', [28.6600, 77.2300])
-
-                mc = 'red' if severity == 'CRITICAL' else 'orange' if severity == 'SERIOUS' else 'green'
-                m = folium.Map(location=[center_lat, center_lon], zoom_start=13, tiles="openstreetmap")
-
-                # Affected area marker
-                if has_affected:
-                    folium.Marker(
-                        [affected_lat, affected_lon],
-                        popup=f"⚠️ Affected Area ({severity})",
-                        icon=folium.Icon(color=mc, icon='warning-sign')
-                    ).add_to(m)
-
-                # Safe zone marker
-                if has_safe:
-                    folium.Marker(
-                        [safe_lat, safe_lon],
-                        popup="✅ Safe Zone",
-                        icon=folium.Icon(color='green', icon='ok-sign')
-                    ).add_to(m)
-
-                # Auto-fit bounds when both markers exist
-                if has_affected and has_safe:
-                    bounds = [[affected_lat, affected_lon], [safe_lat, safe_lon]]
-                    m.fit_bounds(bounds, padding=[40, 40])
-
-                st_folium(m, width=500, height=380, key="result_map")
-            except Exception:
-                # Fallback to simple st.map with whatever coordinates are available
-                fallback_lat = map_data.get("affected_lat") or map_data.get("safe_lat") or 28.6600
-                fallback_lon = map_data.get("affected_lon") or map_data.get("safe_lon") or 77.2300
-                st.map({"lat": [fallback_lat], "lon": [fallback_lon]})
-
-            st.write(res.get("logistics", {}).get("message", ""))
-
-            st.divider()
-            pass # Live Triage Queue Removed as requested
+        st.write("### 📞 Emergency Contacts")
+        contacts_data = res.get("resources_contacts", {})
+        if contacts_data:
+            for name, number in contacts_data.items():
+                st.markdown(f"**{name}:** {number}")
+        else:
+            st.markdown("**Police:** 112\n\n**Ambulance:** 108\n\n**Fire:** 101\n\n**Disaster:** 1078")
 
         st.divider()
         if st.button("🔄 Start New Report", use_container_width=True, type="primary"):
