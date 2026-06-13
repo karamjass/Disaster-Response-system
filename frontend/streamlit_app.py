@@ -843,20 +843,28 @@ if not st.session_state.analyzed:
                 badge.innerText=icons[detectedLang]+' detected';
                 badge.style.display='inline-block';
                 try{
-                    var res=await fetch('http://localhost:11434/api/generate',{
+                    var res=await fetch('https://disaster-response-system-ppci.onrender.com/disaster-ai',{
                         method:'POST',
                         headers:{'Content-Type':'application/json'},
-                        body:JSON.stringify({
-                            model:'gemma4:e4b',
-                            prompt:`You are emergency AI. Victim said: "${text}". Detected language: ${detectedLang}. Reply SAME language as victim. STRICT FORMAT ONLY:\nDISASTER: [type]\nSAFE PLACES: [p1], [p2], [p3]\nINSTRUCTION: [one sentence]\nAVOID: [one sentence]`,
-                            stream:false
-                        })
+                        body:JSON.stringify({query: text})
                     });
                     var data=await res.json();
-                    parseAndDisplay(data.response);
+                    var instruction=data.immediate_actions?data.immediate_actions[0]:'Move to nearest safe area';
+                    var avoid=data.survival_tips?data.survival_tips[0]:'Avoid dangerous zones';
+                    var disaster=data.disaster_type||'Emergency';
+                    var safeLat=data.map_data?data.map_data.safe_lat:userLat+0.008;
+                    var safeLon=data.map_data?data.map_data.safe_lon:userLng+0.006;
+                    var safeName=data.map_data?data.map_data.nearest_safe_zone:'Safe Zone';
+                    addSafeMarkers(userLat,userLng,[safeName]);
+                    document.getElementById('card-disaster').innerText=disaster.toUpperCase();
+                    document.getElementById('card-instruction').innerText=instruction;
+                    document.getElementById('card-avoid').innerText=avoid;
+                    document.getElementById('instruction-card').style.display='block';
+                    lastInstruction=instruction;
+                    speak(instruction);
                     status.innerText='Safe route found ✅';
                 }catch(e){
-                    status.innerText='AI offline. Check Ollama.';
+                    status.innerText='Error: '+e.message;
                 }
             }
 
