@@ -5,7 +5,7 @@ from streamlit_folium import st_folium
 import random
 import math
 
-API_URL = "http://127.0.0.1:8000/analyze"
+API_URL = "https://disaster-response-system-ppci.onrender.com/analyze"
 
 # Page config
 st.set_page_config(
